@@ -46,12 +46,13 @@ const GuardReferences = ({ onNext, onPrevious, initialData = {} }) => {
                 .matches(/^\d{5}-\d{7}-\d{1}$/, 'CNIC format should be 12345-1234567-1')
                 .required('CNIC Number is required');
             schema[`reference_${index}_contactNumber`] = Yup.string()
-                .matches(/^[\+]?[0-9]{10,15}$/, 'Invalid contact number');
-            schema[`reference_${index}_relationship`] = Yup.string();
-            schema[`reference_${index}_currentAddress`] = Yup.string();
-            schema[`reference_${index}_permanentAddress`] = Yup.string();
-                schema[`reference_${index}_cnicFront`] = Yup.string();
-                schema[`reference_${index}_cnicBack`] = Yup.string();
+                .matches(/^[\+]?[0-9]{10,15}$/, 'Invalid contact number')
+                .required('Contact Number is required');
+            schema[`reference_${index}_relationship`] = Yup.string().required('Relationship is required');
+            schema[`reference_${index}_currentAddress`] = Yup.string().required('Current Address is required');
+            schema[`reference_${index}_permanentAddress`] = Yup.string().required('Permanent Address is required');
+            schema[`reference_${index}_cnicFront`] = Yup.string().required('CNIC Front is required');
+            schema[`reference_${index}_cnicBack`] = Yup.string().required('CNIC Back is required');
         });
         return Yup.object(schema);
     };
@@ -113,72 +114,102 @@ const GuardReferences = ({ onNext, onPrevious, initialData = {} }) => {
 
     const handleFileUpload = async (fieldName, event, setFieldValue, values) => {
         const file = event.target.files[0];
-        if (file) {
+        if (!file) {
+            return;
+        }
+
+        try {
             // Validate file type
             const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
             if (!allowedTypes.includes(file.type)) {
                 alert('Please upload only JPG, PNG, or PDF files');
+                event.target.value = '';
                 return;
             }
 
             const maxSize = 10 * 1024 * 1024; // 10MB
             if (file.size > maxSize) {
                 alert('File size must be less than 10MB');
+                event.target.value = '';
                 return;
             }
 
-            try {
-                // Get upload URL from API
-                const getUploadKeyPayload = {
-                    fileName: file.name,
-                    fileType: file.type
-                };
+            // Get upload URL from API
+            const getUploadKeyPayload = {
+                fileName: file.name,
+                fileType: file.type
+            };
 
-
-                const res = await userRequest.post("/file/url", getUploadKeyPayload);
-                const { key, uploadUrl } = res.data.data;
-
-                // Upload file to S3
-                const uploadFileResponse = await axios.put(uploadUrl, file, {
-                    headers: {
-                        "Content-Type": file.type,
-                    },
-                });
-
-                if (uploadFileResponse.status === 200) {
-
-
-                    // Update Formik value
-                    setFieldValue(fieldName, key);
-
-                    // Extract reference index and type from fieldName
-                    const [, referenceIndex, documentType] = fieldName.match(/reference_(\d+)_(cnicFront|cnicBack)/);
-
-                    // Update references state while preserving form values
-                    setReferences(prevReferences => {
-                        const updatedReferences = prevReferences.map((ref, idx) => {
-                            if (idx === parseInt(referenceIndex)) {
-                                return {
-                                    ...ref,
-                                    [documentType]: key,
-                                    fullName: values[`reference_${idx}_fullName`] || ref.fullName,
-                                    fatherName: values[`reference_${idx}_fatherName`] || ref.fatherName,
-                                    cnicNumber: values[`reference_${idx}_cnicNumber`] || ref.cnicNumber,
-                                    contactNumber: values[`reference_${idx}_contactNumber`] || ref.contactNumber,
-                                    relationship: values[`reference_${idx}_relationship`] || ref.relationship,
-                                    currentAddress: values[`reference_${idx}_currentAddress`] || ref.currentAddress,
-                                    permanentAddress: values[`reference_${idx}_permanentAddress`] || ref.permanentAddress
-                                };
-                            }
-                            return ref;
-                        });
-                        return updatedReferences;
-                    });
-                }
-            } catch (error) {
-                console.error('File upload failed:', error);
-                alert('File upload failed. Please try again.');
+            const res = await userRequest.post("/file/presigned-url", getUploadKeyPayload);
+            if (!res.data || !res.data.data) {
+                throw new Error('Invalid response from server');
             }
+            const { key, uploadUrl } = res.data.data;
+            if (!key || !uploadUrl) {
+                throw new Error('Missing upload URL or key from server');
+            }
+
+            // Upload file to S3
+            const uploadFileResponse = await axios.put(uploadUrl, file, {
+                headers: {
+                    "Content-Type": file.type,
+                },
+                maxContentLength: Infinity,
+                maxBodyLength: Infinity
+            });
+
+            if (uploadFileResponse.status === 200) {
+                // Update Formik value
+                setFieldValue(fieldName, key);
+
+                // Extract reference index and type from fieldName
+                const [, referenceIndex, documentType] = fieldName.match(/reference_(\d+)_(cnicFront|cnicBack)/);
+
+                // Update references state while preserving form values
+                setReferences(prevReferences => {
+                    const updatedReferences = prevReferences.map((ref, idx) => {
+                        if (idx === parseInt(referenceIndex)) {
+                            return {
+                                ...ref,
+                                [documentType]: key,
+                                fullName: values[`reference_${idx}_fullName`] || ref.fullName,
+                                fatherName: values[`reference_${idx}_fatherName`] || ref.fatherName,
+                                cnicNumber: values[`reference_${idx}_cnicNumber`] || ref.cnicNumber,
+                                contactNumber: values[`reference_${idx}_contactNumber`] || ref.contactNumber,
+                                relationship: values[`reference_${idx}_relationship`] || ref.relationship,
+                                currentAddress: values[`reference_${idx}_currentAddress`] || ref.currentAddress,
+                                permanentAddress: values[`reference_${idx}_permanentAddress`] || ref.permanentAddress
+                            };
+                        }
+                        return ref;
+                    });
+                    return updatedReferences;
+                });
+            } else {
+                throw new Error(`Upload failed with status ${uploadFileResponse.status}`);
+            }
+        } catch (error) {
+            console.error('File upload failed:', error);
+            let errorMessage = 'File upload failed. ';
+            
+            if (error.response) {
+                // Server responded with error
+                console.error('Server error:', error.response.data);
+                errorMessage += error.response.data.message || 'Server error occurred.';
+            } else if (error.request) {
+                // Request was made but no response
+                console.error('Network error:', error.request);
+                errorMessage += 'Network error. Please check your connection.';
+            } else {
+                // Error in request setup
+                console.error('Request error:', error.message);
+                errorMessage += error.message || 'Please try again.';
+            }
+            
+            alert(errorMessage);
+            
+            // Reset the file input
+            event.target.value = '';
         }
     };
 

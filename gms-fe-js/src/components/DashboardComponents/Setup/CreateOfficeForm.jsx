@@ -38,17 +38,17 @@ const CreateOfficeForm = () => {
     };
 
     const handleSubmit = async (values, { setSubmitting, resetForm }) => {
-
         try {
+            // Format payload to match backend DTO
             const addOfficePayload = {
                 branchName: values.branchName,
                 email: values.email,
                 province: values.province,
                 city: values.city,
-                address: values.addressLine1,
-                addressOpt: values.addressLine2 || "",
-                contactNumber: values.contactNo,
-                contactNumberOpt: values.contactNumberOpt
+                address: values.addressLine2 
+                    ? `${values.addressLine1}, ${values.addressLine2}`
+                    : values.addressLine1,
+                contactNumber: values.contactNo
             }
 
             const res = await userRequest.post("/organizations/add-office", addOfficePayload);

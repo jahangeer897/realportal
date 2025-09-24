@@ -8,9 +8,11 @@ import { CalculateAge } from '@/utils/FormHelpers/CalculateAge';
 import { userRequest } from '@/lib/RequestMethods';
 import { maxDOB, minDOB } from '@/utils/FormHelpers/AgeLimitCalculator';
 import toast from 'react-hot-toast';
+import { useSelector } from 'react-redux';
 
 const GuardPersonalInformation = ({ onNext, initialData = {} }) => {
   const [offices, setOffices] = useState(null);
+  const authData = useSelector((state) => state.user);
 
   const validationSchema = Yup.object({
     officeId: Yup.string().required("Branch name is required"), //branch name is required
@@ -90,23 +92,80 @@ const GuardPersonalInformation = ({ onNext, initialData = {} }) => {
   };
 
   useEffect(() => {
-
     const getAllOffices = async () => {
       try {
-        //This all offices contain the branch
-        const res = await userRequest.get("/organizations/get-offices");
-        console.log("Offices", res.data.data);
-        if (res.data?.data) {
+        // Check if we have a token before making the request
+        const token = authData.token || authData.currentUser?.data?.token;
+        
+        if (!token) {
+          console.error('No authentication token found');
+          toast.error('Please log in again to continue.');
+          return;
+        }
+
+      // Make the request with timeout
+      const res = await userRequest.get("/organizations/get-offices", { 
+        timeout: 10000, // 10 second timeout
+      });      // Log the complete response for debugging
+      console.log("Complete office response:", {
+        status: res.status,
+        statusText: res.statusText,
+        headers: res.headers,
+        data: res.data
+      });
+      
+      if (res.data?.data) {
+        console.log("Successfully fetched offices:", res.data.data);
+        if (Array.isArray(res.data.data)) {
           setOffices(res.data.data);
         } else {
-          toast.error("Failed to load branch offices. No data received.");
+          console.error("Unexpected data format:", res.data.data);
+          toast.error("Invalid data format received from server");
+          setOffices([]);
         }
-      } catch (error) {
-        console.error("Failed to fetch offices:", error);
-        toast.error(error.response?.data?.message || "Failed to load branch offices. Please try again.");
-        setOffices([]); // Set empty array as fallback
+      } else {
+        console.warn("API returned success but no data:", res.data);
+        toast.error("No office data available. Please contact your administrator.");
+        setOffices([]);
       }
+    } catch (error) {
+      // Detailed error logging
+      // Log error without sensitive information
+      console.error("Failed to fetch offices:", {
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message,
+        endpoint: '/organizations/get-offices'
+      });      // User-friendly error messages based on error type
+      if (error.code === 'ECONNABORTED') {
+        toast.error("Request timed out. Please check your connection and try again.");
+      } else if (!error.response) {
+        toast.error("Network error. Please check your connection.");
+      } else {
+        switch (error.response.status) {
+          case 401:
+            toast.error("Your session has expired. Please log in again.");
+            // You might want to redirect to login here
+            break;
+          case 403:
+            toast.error("You don't have permission to view office data. Please contact your administrator.");
+            break;
+          case 404:
+            toast.error("Office data not found. Please contact support.");
+            break;
+          case 500:
+            toast.error("Server error. Our team has been notified.");
+            break;
+          default:
+            toast.error(
+              error.response?.data?.message || 
+              "Unable to load office data. Please try again later."
+            );
+        }
+      }
+      
+      setOffices([]); // Set empty array as fallback
     }
+  }
 
 
     getAllOffices();

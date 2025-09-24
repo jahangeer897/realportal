@@ -103,20 +103,35 @@ const EmployeeDocuments = ({ onNext, onPrevious, onSave, initialData = {} }) => 
                 };
                 console.log('Document upload payload:', getUploadKeyPayload);
 
-                const res = await userRequest.post("/file/url", getUploadKeyPayload);
+                const res = await userRequest.post("/file/presigned-url", getUploadKeyPayload);
+                if (!res.data || !res.data.data) {
+                    throw new Error('Invalid response from server');
+                }
                 const { key, uploadUrl } = res.data.data;
+                if (!key || !uploadUrl) {
+                    throw new Error('Missing upload URL or key from server');
+                }
                 console.log("Key:", key);
                 console.log("Upload URL:", uploadUrl);
 
                 // Upload file to S3
-                const uploadFileResponse = await axios.put(uploadUrl, file, {
-                    headers: {
-                        "Content-Type": file.type,
-                    },
-                });
+                try {
+                    const uploadFileResponse = await axios.put(uploadUrl, file, {
+                        headers: {
+                            "Content-Type": file.type,
+                        },
+                        maxContentLength: Infinity,
+                        maxBodyLength: Infinity
+                    });
 
-                if (uploadFileResponse.status === 200) {
-                    console.log(file.name, "Uploaded successfully");
+                    if (uploadFileResponse.status === 200) {
+                        console.log(file.name, "Uploaded successfully");
+                    } else {
+                        throw new Error(`Upload failed with status ${uploadFileResponse.status}`);
+                    }
+                } catch (uploadError) {
+                    console.error('S3 upload error:', uploadError);
+                    throw new Error('Failed to upload file to storage: ' + (uploadError.message || 'Unknown error'));
                 }
 
                 // Update the uploaded files state
@@ -140,7 +155,26 @@ const EmployeeDocuments = ({ onNext, onPrevious, onSave, initialData = {} }) => 
 
             } catch (error) {
                 console.error('File upload failed:', error);
-                alert('File upload failed. Please try again.');
+                let errorMessage = 'File upload failed. ';
+                
+                if (error.response) {
+                    // Server responded with error
+                    console.error('Server error:', error.response.data);
+                    errorMessage += error.response.data.message || 'Server error occurred.';
+                } else if (error.request) {
+                    // Request was made but no response
+                    console.error('Network error:', error.request);
+                    errorMessage += 'Network error. Please check your connection.';
+                } else {
+                    // Error in request setup
+                    console.error('Request error:', error.message);
+                    errorMessage += error.message || 'Please try again.';
+                }
+                
+                alert(errorMessage);
+                
+                // Reset the file input
+                event.target.value = '';
             }
         }
     };

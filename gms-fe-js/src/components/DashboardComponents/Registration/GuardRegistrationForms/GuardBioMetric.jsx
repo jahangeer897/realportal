@@ -63,18 +63,24 @@ const GuardBioMetric = ({ onNext, onPrevious, onComplete, onSave, initialData = 
     };
 
     const handleFileChange = async (field, file) => {
+        console.log(`Starting file upload for field: ${field}`, { fileName: file?.name, fileType: file?.type });
+        
         if (file) {
             // Validate file type
             const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/bmp', 'image/tiff', 'application/octet-stream'];
             if (!allowedTypes.includes(file.type)) {
-                alert('Please upload only JPG, PNG, BMP, TIFF, or Template files');
+                const errorMsg = 'Please upload only JPG, PNG, BMP, TIFF, or Template files';
+                toast.error(errorMsg);
+                console.error(`File type validation failed for ${field}:`, file.type);
                 return;
             }
 
             // Validate file size (max 10MB for biometric files)
             const maxSize = 10 * 1024 * 1024; // 10MB
             if (file.size > maxSize) {
-                alert('File size must be less than 10MB');
+                const errorMsg = 'File size must be less than 10MB';
+                toast.error(errorMsg);
+                console.error(`File size validation failed for ${field}:`, file.size);
                 return;
             }
 
@@ -86,8 +92,14 @@ const GuardBioMetric = ({ onNext, onPrevious, onComplete, onSave, initialData = 
                 };
                 console.log('Biometric upload payload:', getUploadKeyPayload);
 
-                const res = await userRequest.post("/file/url", getUploadKeyPayload);
+                const res = await userRequest.post("/file/presigned-url", getUploadKeyPayload);
+                if (!res.data || !res.data.data) {
+                    throw new Error('Invalid response from server');
+                }
                 const { key, uploadUrl } = res.data.data;
+                if (!key || !uploadUrl) {
+                    throw new Error('Missing upload URL or key from server');
+                }
                 console.log("Biometric Key:", key);
                 console.log("Biometric Upload URL:", uploadUrl);
 
@@ -103,42 +115,73 @@ const GuardBioMetric = ({ onNext, onPrevious, onComplete, onSave, initialData = 
                 }
 
                 // Update the uploaded files state
+                console.log(`File upload successful for ${field}, updating state with key:`, key);
+                
                 const updatedFiles = {
                     ...uploadedFiles,
                     [field]: key
                 };
 
+                console.log('Previous uploaded files:', uploadedFiles);
+                console.log('Updated files state:', updatedFiles);
+
                 setUploadedFiles(updatedFiles);
 
                 // Auto-save the data immediately after file upload
                 const formattedData = formatBiometricData(updatedFiles);
+                console.log(`Formatted data for ${field}:`, formattedData);
 
                 // Auto-save to parent component for persistence (without navigation)
                 if (onSave) {
+                    console.log(`Saving ${field} data to parent component`);
                     onSave(formattedData);
+                    toast.success(`${field} uploaded successfully`);
                 }
 
             } catch (error) {
                 console.error('File upload failed:', error);
-                alert('File upload failed. Please try again.');
+                let errorMessage = 'File upload failed. ';
+                
+                if (error.response) {
+                    // Server responded with error
+                    console.error('Server error:', error.response.data);
+                    errorMessage += error.response.data.message || 'Server error occurred.';
+                } else if (error.request) {
+                    // Request was made but no response
+                    console.error('Network error:', error.request);
+                    errorMessage += 'Network error. Please check your connection.';
+                } else {
+                    // Error in request setup
+                    console.error('Request error:', error.message);
+                    errorMessage += error.message || 'Please try again.';
+                }
+                
+                toast.error(errorMessage);
             }
         }
     };
 
     const removeFile = (fieldName) => {
+        console.log(`Removing file for field: ${fieldName}`);
+        console.log('Current uploaded files:', uploadedFiles);
+        
         const updatedFiles = {
             ...uploadedFiles,
             [fieldName]: null
         };
 
+        console.log('Files state after removal:', updatedFiles);
         setUploadedFiles(updatedFiles);
 
         // Auto-save the data after file removal
         const formattedData = formatBiometricData(updatedFiles);
+        console.log('Formatted data after removal:', formattedData);
 
         // Auto-save to parent component for persistence (without navigation)
         if (onSave) {
+            console.log(`Saving data after removing ${fieldName}`);
             onSave(formattedData);
+            toast.success(`${fieldName} removed successfully`);
         }
     };
 
@@ -159,6 +202,16 @@ const GuardBioMetric = ({ onNext, onPrevious, onComplete, onSave, initialData = 
     const handleContinue = () => {
         console.log('=== DEBUG handleContinue ===');
         console.log('uploadedFiles:', uploadedFiles);
+
+        // Check if all biometric files are uploaded
+        let emptyFields = biometricFields
+            .filter(field => !uploadedFiles[field.name])
+            .map(field => field.label);
+
+        if (emptyFields.length > 0) {
+            toast.error(`Please upload all biometric images. Missing: ${emptyFields.join(', ')}`);
+            return;
+        }
 
         // Structure data according to API format using helper function with actual keys
         const formattedData = formatBiometricData(uploadedFiles, false);

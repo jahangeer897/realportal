@@ -120,22 +120,45 @@ const CreateUserForm = () => {
                     fileType: file.type,
                 };
 
-                const res = await userRequest.post("/file/url", getUploadKeyPayload);
+                const res = await userRequest.post("/file/presigned-url", getUploadKeyPayload);
+                if (!res.data || !res.data.data) {
+                    throw new Error('Invalid response from server');
+                }
                 const { key, uploadUrl } = res.data.data;
+                if (!key || !uploadUrl) {
+                    throw new Error('Missing upload URL or key from server');
+                }
 
-                await axios.put(uploadUrl, file, {
+                // Upload file to S3
+                const uploadFileResponse = await axios.put(uploadUrl, file, {
                     headers: {
                         "Content-Type": file.type,
                     },
                 });
-
+                
+                if (uploadFileResponse.status !== 200) {
+                    throw new Error('Failed to upload file to storage');
+                }
 
                 // Set only for profileImage field
                 setFieldValue("profileImage", key);
 
             } catch (error) {
                 console.error("File upload failed:", error);
-                alert("File upload failed. Please try again.");
+                let errorMessage = 'File upload failed. ';
+                
+                if (error.response) {
+                    console.error('Server error:', error.response.data);
+                    errorMessage += error.response.data.message || 'Server error occurred.';
+                } else if (error.request) {
+                    console.error('Network error:', error.request);
+                    errorMessage += 'Network error. Please check your connection.';
+                } else {
+                    console.error('Request error:', error.message);
+                    errorMessage += error.message || 'Please try again.';
+                }
+                
+                toast.error(errorMessage);
             }
         }
     };

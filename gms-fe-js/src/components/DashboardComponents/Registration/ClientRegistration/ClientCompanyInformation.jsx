@@ -71,14 +71,27 @@ const ClientCompanyInformation = ({ onNext, onSave, initialData = {}, currentSte
             }
 
             // Step 1: Get upload URL and key
-            const res = await userRequest.post('/file/url', {
+            const res = await userRequest.post('/file/presigned-url', {
                 fileName: file.name,
                 fileType: file.type
             });
+            
+            if (!res.data || !res.data.data || !res.data.data.uploadUrl) {
+                throw new Error('Failed to get upload URL from server');
+            }
+            
             const { key, uploadUrl } = res.data.data;
 
             // Step 2: Upload to S3
-            await axios.put(uploadUrl, file, { headers: { 'Content-Type': file.type } });
+            const uploadResponse = await axios.put(uploadUrl, file, { 
+                headers: { 'Content-Type': file.type },
+                maxContentLength: 10 * 1024 * 1024, // 10MB max
+                timeout: 30000 // 30 second timeout
+            });
+
+            if (uploadResponse.status !== 200) {
+                throw new Error('Failed to upload file to S3');
+            }
 
             // Update local state
             setContractKey(key);

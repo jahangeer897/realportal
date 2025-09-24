@@ -64,8 +64,9 @@ const EmployeeReferences = ({ onNext, onPrevious, initialData = {} }) => {
             schema[`reference_${index}_relationship`] = Yup.string();
             schema[`reference_${index}_currentAddress`] = Yup.string();
             schema[`reference_${index}_permanentAddress`] = Yup.string();
-            schema[`reference_${index}_cnicFront`] = Yup.string().required('CNIC Front image is required');
-            schema[`reference_${index}_cnicBack`] = Yup.string().required('CNIC Back image is required');
+            // Made CNIC uploads optional
+            schema[`reference_${index}_cnicFront`] = Yup.string();
+            schema[`reference_${index}_cnicBack`] = Yup.string();
         });
         return Yup.object(schema);
     };
@@ -127,7 +128,11 @@ const EmployeeReferences = ({ onNext, onPrevious, initialData = {} }) => {
 
     const handleFileUpload = async (fieldName, event, setFieldValue, values) => {
         const file = event.target.files[0];
-        if (file) {
+        if (!file) {
+            return;
+        }
+
+        try {
             // Validate file type
             const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
             if (!allowedTypes.includes(file.type)) {
@@ -141,55 +146,63 @@ const EmployeeReferences = ({ onNext, onPrevious, initialData = {} }) => {
                 return;
             }
 
-            try {
-                // Get upload URL from API
-                const getUploadKeyPayload = {
-                    fileName: file.name,
-                    fileType: file.type
-                };
+            // Get upload URL from API
+            const getUploadKeyPayload = {
+                fileName: file.name,
+                fileType: file.type
+            };
 
-                const res = await userRequest.post("/file/url", getUploadKeyPayload);
+            try {
+                const res = await userRequest.post("/file/presigned-url", getUploadKeyPayload);
                 const { key, uploadUrl } = res.data.data;
 
                 // Upload file to S3
-                const uploadFileResponse = await axios.put(uploadUrl, file, {
-                    headers: {
-                        "Content-Type": file.type,
-                    },
-                });
-
-                if (uploadFileResponse.status === 200) {
-                    // Update Formik value
-                    setFieldValue(fieldName, key);
-
-                    // Extract reference index and type from fieldName
-                    const [, referenceIndex, documentType] = fieldName.match(/reference_(\d+)_(cnicFront|cnicBack)/);
-
-                    // Update references state while preserving form values
-                    setReferences(prevReferences => {
-                        const updatedReferences = prevReferences.map((ref, idx) => {
-                            if (idx === parseInt(referenceIndex)) {
-                                return {
-                                    ...ref,
-                                    [documentType]: key,
-                                    fullName: values[`reference_${idx}_fullName`] || ref.fullName,
-                                    fatherName: values[`reference_${idx}_fatherName`] || ref.fatherName,
-                                    cnicNumber: values[`reference_${idx}_cnicNumber`] || ref.cnicNumber,
-                                    contactNumber: values[`reference_${idx}_contactNumber`] || ref.contactNumber,
-                                    relationship: values[`reference_${idx}_relationship`] || ref.relationship,
-                                    currentAddress: values[`reference_${idx}_currentAddress`] || ref.currentAddress,
-                                    permanentAddress: values[`reference_${idx}_permanentAddress`] || ref.permanentAddress
-                                };
-                            }
-                            return ref;
-                        });
-                        return updatedReferences;
+                try {
+                    const uploadFileResponse = await axios.put(uploadUrl, file, {
+                        headers: {
+                            "Content-Type": file.type,
+                        },
                     });
+
+                    if (uploadFileResponse.status === 200) {
+                        // Update Formik value
+                        setFieldValue(fieldName, key);
+
+                        // Extract reference index and type from fieldName
+                        const [, referenceIndex, documentType] = fieldName.match(/reference_(\d+)_(cnicFront|cnicBack)/);
+
+                        // Update references state while preserving form values
+                        setReferences(prevReferences => {
+                            const updatedReferences = prevReferences.map((ref, idx) => {
+                                if (idx === parseInt(referenceIndex)) {
+                                    return {
+                                        ...ref,
+                                        [documentType]: key,
+                                        fullName: values[`reference_${idx}_fullName`] || ref.fullName,
+                                        fatherName: values[`reference_${idx}_fatherName`] || ref.fatherName,
+                                        cnicNumber: values[`reference_${idx}_cnicNumber`] || ref.cnicNumber,
+                                        contactNumber: values[`reference_${idx}_contactNumber`] || ref.contactNumber,
+                                        relationship: values[`reference_${idx}_relationship`] || ref.relationship,
+                                        currentAddress: values[`reference_${idx}_currentAddress`] || ref.currentAddress,
+                                        permanentAddress: values[`reference_${idx}_permanentAddress`] || ref.permanentAddress
+                                    };
+                                }
+                                return ref;
+                            });
+                            return updatedReferences;
+                        });
+                    }
+                } catch (uploadError) {
+                    console.error('File upload to S3 failed:', uploadError);
+                    alert('File upload to storage failed. Please try again.');
                 }
-            } catch (error) {
-                console.error('File upload failed:', error);
-                alert('File upload failed. Please try again.');
+            } catch (urlError) {
+                console.error('Failed to get upload URL:', urlError);
+                alert('Failed to initialize file upload. Please try again.');
             }
+        } catch (error) {
+            console.error('File upload failed:', error);
+            alert('File upload failed. Please try again.');
         }
     };
 
@@ -350,7 +363,6 @@ const EmployeeReferences = ({ onNext, onPrevious, initialData = {} }) => {
                             className="hidden"
                             id={`upload-cnic-front-${referenceIndex}`}
                         />
-                        <span className="absolute top-[-19px] right-[3px] text-red-500 text-lg">*</span>
                         <label
                             htmlFor={`upload-cnic-front-${referenceIndex}`}
                             className="inline-flex items-center px-6 py-3 bg-[#5570F1]
@@ -374,7 +386,6 @@ const EmployeeReferences = ({ onNext, onPrevious, initialData = {} }) => {
                             className="hidden"
                             id={`upload-cnic-back-${referenceIndex}`}
                         />
-                        <span className="absolute top-[-19px] right-[3px] text-red-500 text-lg">*</span>
                         <label
                             htmlFor={`upload-cnic-back-${referenceIndex}`}
                             className="inline-flex items-center px-6 py-3 bg-[#5570F1] hover:bg-blue-600
