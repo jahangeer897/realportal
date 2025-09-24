@@ -40,19 +40,70 @@ const GuardReferences = ({ onNext, onPrevious, initialData = {} }) => {
     const createValidationSchema = () => {
         const schema = {};
         references.forEach((_, index) => {
-            schema[`reference_${index}_fullName`] = Yup.string().required('Full Name is required');
-            schema[`reference_${index}_fatherName`] = Yup.string().required("Father's Name is required");
+            // Make all fields conditionally required based on whether any field in the reference is filled
+            const referenceFields = [
+                `reference_${index}_fullName`,
+                `reference_${index}_fatherName`,
+                `reference_${index}_cnicNumber`,
+                `reference_${index}_contactNumber`,
+                `reference_${index}_relationship`,
+                `reference_${index}_currentAddress`,
+                `reference_${index}_permanentAddress`,
+                `reference_${index}_cnicFront`,
+                `reference_${index}_cnicBack`
+            ];
+
+            const isAnyFieldFilled = function(fields, values) {
+                return fields.some(field => values && values[field]);
+            };
+
+            // Basic validations without required()
+            schema[`reference_${index}_fullName`] = Yup.string()
+                .test('conditional-required', 'Full Name is required', function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
+
+            schema[`reference_${index}_fatherName`] = Yup.string()
+                .test('conditional-required', "Father's Name is required", function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
+
             schema[`reference_${index}_cnicNumber`] = Yup.string()
                 .matches(/^\d{5}-\d{7}-\d{1}$/, 'CNIC format should be 12345-1234567-1')
-                .required('CNIC Number is required');
+                .test('conditional-required', 'CNIC Number is required', function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
+
             schema[`reference_${index}_contactNumber`] = Yup.string()
                 .matches(/^[\+]?[0-9]{10,15}$/, 'Invalid contact number')
-                .required('Contact Number is required');
-            schema[`reference_${index}_relationship`] = Yup.string().required('Relationship is required');
-            schema[`reference_${index}_currentAddress`] = Yup.string().required('Current Address is required');
-            schema[`reference_${index}_permanentAddress`] = Yup.string().required('Permanent Address is required');
-            schema[`reference_${index}_cnicFront`] = Yup.string().required('CNIC Front is required');
-            schema[`reference_${index}_cnicBack`] = Yup.string().required('CNIC Back is required');
+                .test('conditional-required', 'Contact Number is required', function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
+
+            schema[`reference_${index}_relationship`] = Yup.string()
+                .test('conditional-required', 'Relationship is required', function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
+
+            schema[`reference_${index}_currentAddress`] = Yup.string()
+                .test('conditional-required', 'Current Address is required', function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
+
+            schema[`reference_${index}_permanentAddress`] = Yup.string()
+                .test('conditional-required', 'Permanent Address is required', function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
+
+            schema[`reference_${index}_cnicFront`] = Yup.string()
+                .test('conditional-required', 'CNIC Front is required', function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
+
+            schema[`reference_${index}_cnicBack`] = Yup.string()
+                .test('conditional-required', 'CNIC Back is required', function(value) {
+                    return !isAnyFieldFilled(referenceFields, this.parent) || value;
+                });
         });
         return Yup.object(schema);
     };
@@ -214,21 +265,29 @@ const GuardReferences = ({ onNext, onPrevious, initialData = {} }) => {
     };
 
     const handleSubmit = (values) => {
-        // Convert form values back to references array format
+        // Convert form values back to references array format and filter out empty references
         const formattedReferences = references.map((reference, index) => ({
-            fullName: values[`reference_${index}_fullName`],
-            fatherName: values[`reference_${index}_fatherName`],
-            cnicNumber: values[`reference_${index}_cnicNumber`],
+            fullName: values[`reference_${index}_fullName`] || '',
+            fatherName: values[`reference_${index}_fatherName`] || '',
+            cnicNumber: values[`reference_${index}_cnicNumber`] || '',
             cnicFront: values[`reference_${index}_cnicFront`] || '',
             cnicBack: values[`reference_${index}_cnicBack`] || '',
-            contactNumber: values[`reference_${index}_contactNumber`],
-            relationship: values[`reference_${index}_relationship`],
-            currentAddress: values[`reference_${index}_currentAddress`],
-            permanentAddress: values[`reference_${index}_permanentAddress`]
-        }));
+            contactNumber: values[`reference_${index}_contactNumber`] || '',
+            relationship: values[`reference_${index}_relationship`] || '',
+            currentAddress: values[`reference_${index}_currentAddress`] || '',
+            permanentAddress: values[`reference_${index}_permanentAddress`] || ''
+        })).filter(ref => 
+            ref.fullName || 
+            ref.fatherName || 
+            ref.cnicNumber || 
+            ref.contactNumber || 
+            ref.relationship || 
+            ref.currentAddress || 
+            ref.permanentAddress
+        );
 
         const formData = {
-            references: formattedReferences
+            references: formattedReferences.length > 0 ? formattedReferences : undefined
         };
 
         console.log('References/Guarantors Information:', formData);
@@ -260,7 +319,7 @@ const GuardReferences = ({ onNext, onPrevious, initialData = {} }) => {
                     {/* Full Name */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Full Name <span className="text-red-500">*</span>
+                            Full Name
                         </label>
                         <Field
                             type="text"

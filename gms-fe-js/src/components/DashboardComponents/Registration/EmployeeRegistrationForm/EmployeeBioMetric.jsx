@@ -39,20 +39,27 @@ const EmployeeBioMetric = ({ onNext, onPrevious, onComplete, onSave, initialData
         console.log('files received:', files);
         console.log('usePlaceholder:', usePlaceholder);
 
+        // Only create biometric object if at least one field has data
+        const hasData = Object.values(files).some(value => value !== null && value !== '');
+        
+        if (!hasData) {
+            return { biometric: null };
+        }
+
         const result = {
             biometric: {
-                rightThumb: files.rightThumb ? (usePlaceholder ? 'uploaded_file_placeholder' : files.rightThumb) : '',
-                rightForeFinger: files.rightForeFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.rightForeFinger) : '',
-                rightMiddleFinger: files.rightMiddleFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.rightMiddleFinger) : '',
-                rightRingFinger: files.rightRingFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.rightRingFinger) : '',
-                rightLittleFinger: files.rightLittleFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.rightLittleFinger) : '',
-                rightFourFinger: files.rightFourFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.rightFourFinger) : '',
-                leftThumb: files.leftThumb ? (usePlaceholder ? 'uploaded_file_placeholder' : files.leftThumb) : '',
-                leftForeFinger: files.leftForeFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.leftForeFinger) : '',
-                leftMiddleFinger: files.leftMiddleFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.leftMiddleFinger) : '',
-                leftRingFinger: files.leftRingFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.leftRingFinger) : '',
-                leftLittleFinger: files.leftLittleFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.leftLittleFinger) : '',
-                leftFourFinger: files.leftFourFinger ? (usePlaceholder ? 'uploaded_file_placeholder' : files.leftFourFinger) : ''
+                rightThumb: files.rightThumb || null,
+                rightForeFinger: files.rightForeFinger || null,
+                rightMiddleFinger: files.rightMiddleFinger || null,
+                rightRingFinger: files.rightRingFinger || null,
+                rightLittleFinger: files.rightLittleFinger || null,
+                rightFourFinger: files.rightFourFinger || null,
+                leftThumb: files.leftThumb || null,
+                leftForeFinger: files.leftForeFinger || null,
+                leftMiddleFinger: files.leftMiddleFinger || null,
+                leftRingFinger: files.leftRingFinger || null,
+                leftLittleFinger: files.leftLittleFinger || null,
+                leftFourFinger: files.leftFourFinger || null
             }
         };
 
@@ -160,8 +167,16 @@ const EmployeeBioMetric = ({ onNext, onPrevious, onComplete, onSave, initialData
         console.log('=== DEBUG handleContinue ===');
         console.log('uploadedFiles:', uploadedFiles);
 
-        // Structure data according to API format using helper function with actual keys
-        const formattedData = formatBiometricData(uploadedFiles, false);
+        // Check if any biometric data is uploaded
+        const hasAnyBiometricData = Object.values(uploadedFiles).some(value => value !== null && value !== '');
+
+        // If no biometric data, create empty biometric object
+        let formattedData;
+        if (!hasAnyBiometricData) {
+            formattedData = { biometric: null };
+        } else {
+            formattedData = formatBiometricData(uploadedFiles, false);
+        }
 
         console.log('Final biometric formattedData:', formattedData);
         console.log('=== END DEBUG ===');
@@ -280,11 +295,12 @@ const EmployeeBioMetric = ({ onNext, onPrevious, onComplete, onSave, initialData
                             </h3>
                             <div className="mt-2 text-sm text-blue-700">
                                 <ul className="list-disc pl-5 space-y-1">
-                                    <li>Upload clear fingerprint images or biometric templates</li>
-                                    <li>Ensure fingerprints are captured properly without smudging</li>
+                                    <li>All biometric fields are optional - you can proceed without uploading any fingerprints</li>
+                                    <li>If uploading, ensure clear fingerprint images or biometric templates</li>
                                     <li>Supported formats: JPG, PNG, BMP, TIFF, Template files</li>
                                     <li>Individual finger captures are preferred for accuracy</li>
                                     <li>Four-finger captures can be used as alternatives</li>
+                                    <li>Click "Complete Registration" to continue with or without biometric data</li>
                                 </ul>
                             </div>
                         </div>
