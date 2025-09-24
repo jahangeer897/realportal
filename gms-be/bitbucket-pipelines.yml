@@ -1,0 +1,46 @@
+image: atlassian/default-image:3
+
+pipelines:
+  branches:
+    main:
+      - step:
+          name: Deploy to Prod Server
+          script:
+            - pipe: atlassian/ssh-run:0.2.8
+              variables:
+                SSH_USER: $sshuser
+                SERVER: $prodip
+                COMMAND: |
+                  bash -lc "
+                    echo '🔑 Setting permissions...'
+                    sudo chown -R ubuntu:ubuntu /home/ubuntu/gms-be
+                  
+                    echo '📂 Entering project...'
+                    cd /home/ubuntu/gms-be
+                    cp .env ../
+
+                    echo '🛑 Stopping old PM2 process...'
+                    sudo pm2 stop gms-be || true
+
+                    echo '🔄 Resetting to latest main...'
+                    # 2. Remove any untracked/garbage files
+                    git clean -fdx
+
+                    # 3. Fetch the latest remote commits
+                    git fetch --all
+
+                    # 4. Hard reset to main
+                    git reset --hard origin/main
+
+                    echo '🧹 Cleaning old dependencies & Prisma...'
+                    sudo npm cache clean --force
+                    sudo cp /home/ubuntu/.env /home/ubuntu/gms-be
+                    echo '📦 Installing dependencies...'
+                    sudo npm install
+                    echo '🏗️ Building project...'
+                    sudo npm run build
+                    echo '🚀 Restarting PM2...'
+                    sudo pm2 delete gms-be || true
+                    sudo pm2 start dist/src/main.js --name gms-be
+                    echo '✅ Deployment completed!'
+                  "
